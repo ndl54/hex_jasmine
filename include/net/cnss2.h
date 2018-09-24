@@ -141,6 +141,18 @@ extern int cnss_wlan_register_driver(struct cnss_wlan_driver *driver);
 extern void cnss_wlan_unregister_driver(struct cnss_wlan_driver *driver);
 extern void cnss_device_crashed(void);
 extern int cnss_pci_link_down(struct device *dev);
+extern int cnss_wlan_pm_control(struct device *dev, bool vote);
+#else /* CONFIG_PCI_MSM */
+static inline int cnss_pci_link_down(struct device *dev)
+{
+	return 0;
+}
+static inline int cnss_wlan_pm_control(struct device *dev, bool vote)
+{
+	return 0;
+}
+#endif /* CONFIG_PCI_MSM */
+extern int cnss_pci_is_device_down(struct device *dev);
 extern void cnss_schedule_recovery(struct device *dev,
 				   enum cnss_recovery_reason reason);
 extern int cnss_self_recovery(struct device *dev,

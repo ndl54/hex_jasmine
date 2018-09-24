@@ -23,6 +23,8 @@
 #include "sde_hw_intf.h"
 #include "sde_hw_catalog.h"
 #include "dsi_display.h"
+#include "sde_hdmi.h"
+#include "sde_crtc.h"
 
 #define MDP_SSPP_TOP0_OFF		0x1000
 #define DISP_INTF_SEL			0x004
@@ -629,12 +631,59 @@ int sde_splash_clean_up_free_resource(struct msm_kms *kms,
 }
 
 /*
- * In below function, it will
- * 1. Notify LK to exit and wait for exiting is done.
- * 2. Set DOMAIN_ATTR_EARLY_MAP to 1 to enable stage 1 translation in iommu.
+ * Below function will detach all the pipes of the mixer
+ */
+static int _sde_splash_clear_mixer_blendstage(struct msm_kms *kms,
+				struct drm_atomic_state *state)
+{
+	struct drm_crtc *crtc;
+	struct sde_crtc *sde_crtc;
+	struct sde_crtc_mixer *mixer;
+	int i;
+	struct sde_splash_info *sinfo;
+	struct sde_kms *sde_kms = to_sde_kms(kms);
+
+	sinfo = &sde_kms->splash_info;
+
+	if (!sinfo) {
+		SDE_ERROR("%s(%d): invalid splash info\n", __func__, __LINE__);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < state->dev->mode_config.num_crtc; i++) {
+		crtc = state->crtcs[i];
+		if (!crtc) {
+			SDE_ERROR("CRTC is NULL");
+			continue;
+		}
+		sde_crtc = to_sde_crtc(crtc);
+		if (!sde_crtc) {
+			SDE_ERROR("SDE CRTC is NULL");
+			return -EINVAL;
+		}
+		mixer = sde_crtc->mixers;
+		if (!mixer) {
+			SDE_ERROR("Mixer is NULL");
+			return -EINVAL;
+		}
+		for (i = 0; i < sde_crtc->num_mixers; i++) {
+			if (mixer[i].hw_ctl->ops.clear_all_blendstages)
+				mixer[i].hw_ctl->ops.clear_all_blendstages(
+						mixer[i].hw_ctl,
+						sinfo->handoff,
+						sinfo->reserved_pipe_info,
+						MAX_BLOCKS);
+		}
+	}
+	return 0;
+}
+
+/*
+ * Below function will notify LK to stop display splash.
  */
 int sde_splash_clean_up_exit_lk(struct msm_kms *kms)
 {
+	int error = 0;
 	struct sde_splash_info *sinfo;
 	struct msm_mmu *mmu;
 	struct sde_kms *sde_kms = to_sde_kms(kms);
@@ -653,30 +702,10 @@ int sde_splash_clean_up_exit_lk(struct msm_kms *kms)
 		if (_sde_splash_lk_check(sde_kms->hw_intr))
 			_sde_splash_notify_lk_exit(sde_kms->hw_intr);
 
-		sinfo->handoff = false;
-		sinfo->program_scratch_regs = false;
-	}
-	rt_mutex_unlock(&sde_splash_lock);
+		sinfo->display_splash_enabled = false;
 
-	if (!sde_kms->aspace[0] || !sde_kms->aspace[0]->mmu) {
-		/* We do not return fault value here, to ensure
-		 * flag "lk_is_exited" is set.
-		 */
-		SDE_ERROR("invalid mmu\n");
-		WARN_ON(1);
-	} else {
-		mmu = sde_kms->aspace[0]->mmu;
-		/* After LK has exited, set early domain map attribute
-		 * to 1 to enable stage 1 translation in iommu driver.
-		 */
-		if (mmu->funcs && mmu->funcs->set_property) {
-			ret = mmu->funcs->set_property(mmu,
-				DOMAIN_ATTR_EARLY_MAP, &sinfo->handoff);
-
-			if (ret)
-				SDE_ERROR("set_property failed\n");
-		}
+		error = _sde_splash_clear_mixer_blendstage(kms, state);
 	}
 
-	return 0;
+	return error;
 }
