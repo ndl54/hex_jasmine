@@ -1468,13 +1468,8 @@ static int cnss_do_recovery(struct cnss_plat_data *plat_priv,
 			goto self_recovery;
 		break;
 	case CNSS_REASON_RDDM:
+		cnss_bus_collect_dump_info(plat_priv);
 		clear_bit(CNSS_DEV_ERR_NOTIFY, &plat_priv->driver_state);
-		ret = cnss_pci_set_mhi_state(pci_priv, CNSS_MHI_RDDM);
-		if (ret) {
-			cnss_pr_err("Failed to complete RDDM, err = %d\n", ret);
-			break;
-		}
-		cnss_pci_collect_dump_info(pci_priv);
 		break;
 	case CNSS_REASON_DEFAULT:
 	case CNSS_REASON_TIMEOUT:
