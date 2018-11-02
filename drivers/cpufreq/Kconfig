@@ -429,19 +429,27 @@ config SCHED_CHILD_RUNS_FIRST
   bool "Process child forks before parent forks"
   default y
 
+config CPU_FREQ_DEFAULT_MIN_MAX
+  bool "Use default min and max frequencies on boot"
+  default n
+
 config CPU_FREQ_MIN_CLUSTER1
   int "Default min frequency on boot (little)"
+  depends on CPU_FREQ_DEFAULT_MIN_MAX
   default 300000
 
 config CPU_FREQ_MAX_CLUSTER1
   int "Default max frequency on boot (little)"
+  depends on CPU_FREQ_DEFAULT_MIN_MAX
   default 1843200
 
 config CPU_FREQ_MIN_CLUSTER2
   int "Default min frequency on boot (big)"
+  depends on CPU_FREQ_DEFAULT_MIN_MAX
   default 300000
 
 config CPU_FREQ_MAX_CLUSTER2
   int "Default max frequency on boot (big)"
+  depends on CPU_FREQ_DEFAULT_MIN_MAX
   default 2150400
 
