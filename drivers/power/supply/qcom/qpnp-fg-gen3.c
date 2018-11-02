@@ -969,8 +969,14 @@ out:
 }
 static int __init hwc_setup(char *s)
 {
-    hwc_check_india = 1;
-    hwc_check_global = 0;
+	if (strcmp(s, "India") == 0)
+		hwc_check_india = 1;
+	else
+		hwc_check_india = 0;
+	if (strcmp(s, "Global") == 0)
+		hwc_check_global = 1;
+	else
+		hwc_check_global = 0;
 	return 1;
 }
 
