@@ -366,7 +366,7 @@ static void nvt_esd_check_func(struct work_struct *work)
 static void nvt_ts_work_func(struct work_struct *work)
 {
 	uint8_t point_data[POINT_DATA_LEN + 1] = {0};
-	rt_mutex_lock(&ts->lock);
+	mutex_lock(&ts->lock);
 	int32_t ret = CTP_I2C_READ(ts->client, I2C_FW_Address, point_data, POINT_DATA_LEN + 1);
 	if (unlikely(ret < 0))
 		goto XFER_ERROR;
@@ -416,7 +416,7 @@ static void nvt_ts_work_func(struct work_struct *work)
 
 XFER_ERROR:
 	enable_irq(ts->client->irq);
-	rt_mutex_unlock(&ts->lock);
+	mutex_unlock(&ts->lock);
 }
 
 static irqreturn_t nvt_ts_irq_handler(int32_t irq, void *dev_id)
@@ -526,13 +526,13 @@ static int32_t nvt_ts_probe(struct i2c_client *client, const struct i2c_device_i
 		goto err_chipvertrim_failed;
 	}
 
-	rt_mutex_init(&ts->lock);
+	mutex_init(&ts->lock);
 
-	rt_mutex_lock(&ts->lock);
+	mutex_lock(&ts->lock);
 	nvt_bootloader_reset();
 	nvt_check_fw_reset_state(RESET_STATE_INIT);
 	nvt_get_fw_info();
-	rt_mutex_unlock(&ts->lock);
+	mutex_unlock(&ts->lock);
 
 
 	nvt_wq = create_workqueue("nvt_wq");
@@ -617,7 +617,7 @@ err_input_register_device_failed:
 	input_free_device(ts->input_dev);
 err_input_dev_alloc_failed:
 err_create_nvt_wq_failed:
-	rt_mutex_destroy(&ts->lock);
+	mutex_destroy(&ts->lock);
 err_chipvertrim_failed:
 err_check_functionality_failed:
 	gpio_free(ts->irq_gpio);
@@ -630,7 +630,7 @@ err_gpio_config_failed:
 static int32_t nvt_ts_remove(struct i2c_client *client)
 {
 	fb_unregister_client(&ts->fb_notif);
-	rt_mutex_destroy(&ts->lock);
+	mutex_destroy(&ts->lock);
 	free_irq(client->irq, ts);
 	input_unregister_device(ts->input_dev);
 	i2c_set_clientdata(client, NULL);
@@ -645,7 +645,7 @@ static int32_t nvt_ts_suspend(struct device *dev)
 	if (!bTouchIsAwake) {
 		return 0;
 	}
-	rt_mutex_lock(&ts->lock);
+	mutex_lock(&ts->lock);
 	bTouchIsAwake = 0;
 	cancel_delayed_work_sync(&nvt_esd_check_work);
 	nvt_esd_check_enable(false);
@@ -662,7 +662,7 @@ static int32_t nvt_ts_suspend(struct device *dev)
 	input_report_key(ts->input_dev, BTN_TOUCH, 0);
 	input_sync(ts->input_dev);
 	msleep(50);
-	rt_mutex_unlock(&ts->lock);
+	mutex_unlock(&ts->lock);
 	return 0;
 }
 
@@ -671,7 +671,7 @@ static int32_t nvt_ts_resume(struct device *dev)
 	if (bTouchIsAwake) {
 		return 0;
 	}
-	rt_mutex_lock(&ts->lock);
+	mutex_lock(&ts->lock);
 	nvt_bootloader_reset();
 	nvt_check_fw_reset_state(RESET_STATE_REK);
 	enable_irq(ts->client->irq);
@@ -679,7 +679,7 @@ static int32_t nvt_ts_resume(struct device *dev)
 			msecs_to_jiffies(NVT_TOUCH_ESD_CHECK_PERIOD));
 
 	bTouchIsAwake = 1;
-	rt_mutex_unlock(&ts->lock);
+	mutex_unlock(&ts->lock);
 	return 0;
 }
 
