@@ -10,6 +10,8 @@
  * GNU General Public License for more details.
  */
 
+#define pr_fmt(fmt)	"haptic: %s: " fmt, __func__
+
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
@@ -353,8 +355,6 @@ struct qpnp_hap {
 	struct mutex			lock;
 	struct mutex			wf_lock;
 	spinlock_t			bus_lock;
-	spinlock_t			td_lock;
-	struct work_struct		td_work;
 	struct completion		completion;
 	enum qpnp_hap_mode		play_mode;
 	u32				misc_clk_trim_error_reg;
@@ -382,8 +382,6 @@ struct qpnp_hap {
 	u8				act_type;
 	u8				wave_shape;
 	u8				wave_samp[QPNP_HAP_WAV_SAMP_LEN];
-	u8				wave_samp_two[QPNP_HAP_WAV_SAMP_LEN];
-	u8				wave_samp_three[QPNP_HAP_WAV_SAMP_LEN];
 	u8				shadow_wave_samp[QPNP_HAP_WAV_SAMP_LEN];
 	u8				brake_pat[QPNP_HAP_BRAKE_PAT_LEN];
 	u8				sc_count;
@@ -404,7 +402,6 @@ struct qpnp_hap {
 	bool				auto_mode;
 	bool				override_auto_mode_config;
 	bool				play_irq_en;
-	int				td_time_ms;
 };
 
 static struct qpnp_hap *ghap;
@@ -517,11 +514,8 @@ static void qpnp_handle_sc_irq(struct work_struct *work)
 	struct qpnp_hap *hap = container_of(work,
 				struct qpnp_hap, sc_work.work);
 	u8 val;
-	int rc;
 
-	rc = qpnp_hap_read_reg(hap, QPNP_HAP_STATUS(hap->base), &val);
-	if (rc < 0)
-		return;
+	qpnp_hap_read_reg(hap, QPNP_HAP_STATUS(hap->base), &val);
 
 	/* clear short circuit register */
 	if (val & SC_FOUND_BIT) {
@@ -570,6 +564,7 @@ static int qpnp_hap_mod_enable(struct qpnp_hap *hap, bool on)
 				break;
 			}
 		}
+
 		if (i >= QPNP_HAP_MAX_RETRIES)
 			pr_debug("Haptics Busy. Force disable\n");
 	}
@@ -604,9 +599,7 @@ static ssize_t qpnp_hap_dump_regs_show(struct device *dev,
 	u8 val;
 
 	for (i = 0; i < ARRAY_SIZE(qpnp_hap_dbg_regs); i++) {
-		int ret = qpnp_hap_read_reg(hap, hap->base + qpnp_hap_dbg_regs[i], &val);
-		if (ret < 0)
-			continue;
+		qpnp_hap_read_reg(hap, hap->base + qpnp_hap_dbg_regs[i], &val);
 		count += snprintf(buf + count, PAGE_SIZE - count,
 				"qpnp_haptics: REG_0x%x = 0x%x\n",
 				hap->base + qpnp_hap_dbg_regs[i],
@@ -654,8 +647,8 @@ static irqreturn_t qpnp_hap_sc_irq(int irq, void *_hap)
 	pr_debug("Short circuit detected\n");
 
 	if (hap->sc_count < SC_MAX_COUNT) {
-		rc = qpnp_hap_read_reg(hap, QPNP_HAP_STATUS(hap->base), &val);
-		if (!rc && (val & SC_FOUND_BIT))
+		qpnp_hap_read_reg(hap, QPNP_HAP_STATUS(hap->base), &val);
+		if (val & SC_FOUND_BIT)
 			schedule_delayed_work(&hap->sc_work,
 					QPNP_HAP_SC_IRQ_STATUS_DELAY);
 		else
@@ -1055,27 +1048,6 @@ static int qpnp_hap_parse_buffer_dt(struct qpnp_hap *hap)
 	} else {
 		memcpy(hap->wave_samp, prop->value, QPNP_HAP_WAV_SAMP_LEN);
 	}
-
-		prop = of_find_property(pdev->dev.of_node,
-				"qcom,wave-samples-two", &temp);
-	if (!prop || temp != QPNP_HAP_WAV_SAMP_LEN) {
-		pr_err("Invalid wave samples, use default");
-		for (i = 0; i < QPNP_HAP_WAV_SAMP_LEN; i++)
-			hap->wave_samp_two[i] = QPNP_HAP_WAV_SAMP_MAX;
-	} else {
-		memcpy(hap->wave_samp_two, prop->value, QPNP_HAP_WAV_SAMP_LEN);
-	}
-
-		prop = of_find_property(pdev->dev.of_node,
-				"qcom,wave-samples-three", &temp);
-	if (!prop || temp != QPNP_HAP_WAV_SAMP_LEN) {
-		pr_err("Invalid wave samples, use default");
-		for (i = 0; i < QPNP_HAP_WAV_SAMP_LEN; i++)
-			hap->wave_samp_three[i] = QPNP_HAP_WAV_SAMP_MAX;
-	} else {
-		memcpy(hap->wave_samp_three, prop->value, QPNP_HAP_WAV_SAMP_LEN);
-	}
-
 
 	return 0;
 }
@@ -1693,8 +1665,6 @@ static ssize_t qpnp_hap_hi_z_period_show(struct device *dev,
 	case QPNP_HAP_LRA_HIGH_Z_OPT3:
 		str = "high_z_opt3";
 		break;
-	default:
-		str = "unknown";
 	}
 
 	return snprintf(buf, PAGE_SIZE, "%s\n", str);
@@ -1808,22 +1778,14 @@ static ssize_t qpnp_hap_vmax_store(struct device *dev,
 	struct timed_output_dev *timed_dev = dev_get_drvdata(dev);
 	struct qpnp_hap *hap = container_of(timed_dev, struct qpnp_hap,
 					 timed_dev);
-	u32 data;
-	int rc;
- 	if (sscanf(buf, "%d", &data) != 1)
-		return -EINVAL;
- 	if (data < QPNP_HAP_VMAX_MIN_MV) {
-		pr_err("%s: mv %d not in range (%d - %d), using min.", __func__, data, QPNP_HAP_VMAX_MIN_MV, QPNP_HAP_VMAX_MAX_MV);
-		data = QPNP_HAP_VMAX_MIN_MV;
-	} else if (data > QPNP_HAP_VMAX_MAX_MV) {
-		pr_err("%s: mv %d not in range (%d - %d), using max.", __func__, data, QPNP_HAP_VMAX_MIN_MV, QPNP_HAP_VMAX_MAX_MV);
-		data = QPNP_HAP_VMAX_MAX_MV;
-	}
- 	hap->vmax_mv = data;
-	rc = qpnp_hap_vmax_config(hap, hap->vmax_mv, true);
+	int data, rc;
+
+	rc = kstrtoint(buf, 10, &data);
 	if (rc)
-		pr_info("qpnp: error while writing vibration control register\n");
- 	return strnlen(buf, count);
+		return rc;
+
+	hap->vmax_mv = data;
+	return count;
 }
 
 /* sysfs attributes */
@@ -2264,22 +2226,17 @@ static int qpnp_hap_auto_mode_config(struct qpnp_hap *hap, int time_ms)
 	return 0;
 }
 
-static void qpnp_timed_enable_worker(struct work_struct *work)
+/* enable interface from timed output class */
+static void qpnp_hap_td_enable(struct timed_output_dev *dev, int time_ms)
 {
-	struct qpnp_hap *hap = container_of(work, struct qpnp_hap,
-					 td_work);
-	bool state;
+	struct qpnp_hap *hap = container_of(dev, struct qpnp_hap,
+					 timed_dev);
+	bool state = !!time_ms;
 	ktime_t rem;
-	int rc, time_ms;
-
-	spin_lock(&hap->td_lock);
-	time_ms = hap->td_time_ms;
-	spin_unlock(&hap->td_lock);
+	int rc;
 
 	if (time_ms < 0)
 		return;
-
-	state = !!time_ms;
 
 	mutex_lock(&hap->lock);
 
@@ -2328,19 +2285,6 @@ static void qpnp_timed_enable_worker(struct work_struct *work)
 
 	mutex_unlock(&hap->lock);
 	schedule_work(&hap->work);
-}
-
-/* enable interface from timed output class */
-static void qpnp_hap_td_enable(struct timed_output_dev *dev, int time_ms)
-{
-	struct qpnp_hap *hap = container_of(dev, struct qpnp_hap,
-					 timed_dev);
-
-	spin_lock(&hap->td_lock);
-	hap->td_time_ms = time_ms;
-	spin_unlock(&hap->td_lock);
-
-	schedule_work(&hap->td_work);
 }
 
 /* play pwm bytes */
@@ -2399,7 +2343,7 @@ int qpnp_hap_play_byte(u8 data, bool on)
 	pr_debug("data=0x%x duty_per=%d\n", data, duty_percent);
 
 	rc = qpnp_hap_set(hap, true);
-pr_info("%s  zjl f   asd  7 \n", __func__);
+
 	return rc;
 }
 EXPORT_SYMBOL(qpnp_hap_play_byte);
@@ -3079,11 +3023,9 @@ static int qpnp_haptic_probe(struct platform_device *pdev)
 
 	mutex_init(&hap->lock);
 	mutex_init(&hap->wf_lock);
-	spin_lock_init(&hap->td_lock);
 	INIT_WORK(&hap->work, qpnp_hap_worker);
 	INIT_DELAYED_WORK(&hap->sc_work, qpnp_handle_sc_irq);
 	init_completion(&hap->completion);
-	INIT_WORK(&hap->td_work, qpnp_timed_enable_worker);
 
 	hrtimer_init(&hap->hap_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	hap->hap_timer.function = qpnp_hap_timer;
