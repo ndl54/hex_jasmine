@@ -17,25 +17,13 @@
 #include <linux/cpufreq.h>
 #include <linux/fb.h>
 #include <linux/input.h>
-#include <linux/moduleparam.h>
 #include <linux/slab.h>
 
 /* Available bits for boost_drv state */
-#define SCREEN_AWAKE		(1U << 0)
-#define INPUT_BOOST		(1U << 1)
-#define WAKE_BOOST		(1U << 2)
-#define MAX_BOOST		(1U << 3)
-
-static __read_mostly unsigned int input_boost_freq_lp = CONFIG_INPUT_BOOST_FREQ_LP;
-static __read_mostly unsigned int input_boost_freq_perf = CONFIG_INPUT_BOOST_FREQ_PERF;
-
-static __read_mostly unsigned int input_boost_ms = CONFIG_INPUT_BOOST_DURATION_MS;
-module_param(input_boost_ms, uint, 0644);
-
-#ifdef CONFIG_DYNAMIC_STUNE_BOOST
-static int dynamic_stune_boost;
-module_param(dynamic_stune_boost, uint, 0644);
-#endif /* CONFIG_DYNAMIC_STUNE_BOOST */
+#define SCREEN_AWAKE		BIT(0)
+#define INPUT_BOOST		BIT(1)
+#define WAKE_BOOST		BIT(2)
+#define MAX_BOOST		BIT(3)
 
 struct boost_drv {
 	struct workqueue_struct *wq;
@@ -55,80 +43,24 @@ static struct boost_drv *boost_drv_g;
 static u32 get_boost_freq(struct boost_drv *b, u32 cpu)
 {
 	if (cpumask_test_cpu(cpu, cpu_lp_mask))
-		return input_boost_freq_lp;
+		return CONFIG_INPUT_BOOST_FREQ_LP;
 
-	return input_boost_freq_perf;
+	return CONFIG_INPUT_BOOST_FREQ_PERF;
 }
-
-static int set_input_boost_freq(const char *buf, const struct kernel_param *kp)
-{
-	int i, ntokens = 0;
-	unsigned int val, cpu;
-	const char *cp = buf;
-
-	while ((cp = strpbrk(cp + 1, " :")))
-		ntokens++;
-
-	/* CPU:value pair */
-	if (!(ntokens % 2))
-		return -EINVAL;
-
-	cp = buf;
-	for (i = 0; i < ntokens; i += 2) {
-		if (sscanf(cp, "%u:%u", &cpu, &val) != 2)
-			return -EINVAL;
-		
-		if (cpu < 4)
-			input_boost_freq_lp = val;
-		else if (cpu < 7) // last CPU, 7, is bugged in EXKM: always 0
-			input_boost_freq_perf = val;
-		else
-			return -EINVAL;
-
-		cp = strchr(cp, ' ');
-		cp++;
-	}
-
-	return 0;
-}
-
-static int get_input_boost_freq(char *buf, const struct kernel_param *kp)
-{
-	return snprintf(buf, PAGE_SIZE, "0:%u 1:%u 2:%u 3:%u 4:%u 5:%u 6:%u 7:%u \n",
-			input_boost_freq_lp, input_boost_freq_lp, input_boost_freq_lp,
-			input_boost_freq_lp, input_boost_freq_perf, input_boost_freq_perf,
-			input_boost_freq_perf, input_boost_freq_perf);
-}
-
-static const struct kernel_param_ops param_ops_input_boost_freq = {
-	.set = set_input_boost_freq,
-	.get = get_input_boost_freq,
-};
-module_param_cb(input_boost_freq, &param_ops_input_boost_freq, NULL, 0644);
 
 static u32 get_boost_state(struct boost_drv *b)
 {
-	u32 state;
-
-	spin_lock(&b->lock);
-	state = b->state;
-	spin_unlock(&b->lock);
-
-	return state;
+	return atomic_read(&b->state);
 }
 
 static void set_boost_bit(struct boost_drv *b, u32 state)
 {
-	spin_lock(&b->lock);
-	b->state |= state;
-	spin_unlock(&b->lock);
+	atomic_or(state, &b->state);
 }
 
 static void clear_boost_bit(struct boost_drv *b, u32 state)
 {
-	spin_lock(&b->lock);
-	b->state &= ~state;
-	spin_unlock(&b->lock);
+	atomic_andnot(state, &b->state);
 }
 
 static void update_online_cpu_policy(void)
@@ -193,9 +125,6 @@ void cpu_input_boost_kick_max(unsigned int duration_ms)
 
 static void input_boost_worker(struct work_struct *work)
 {
-	if (input_boost_ms == 0)
-		return;
-
 	struct boost_drv *b = container_of(work, typeof(*b), input_boost);
 
 	if (!cancel_delayed_work_sync(&b->input_unboost)) {
@@ -203,13 +132,8 @@ static void input_boost_worker(struct work_struct *work)
 		update_online_cpu_policy();
 	}
 
-#ifdef CONFIG_DYNAMIC_STUNE_BOOST
-	/* Set dynamic stune boost value */
-	do_stune_boost("top-app", dynamic_stune_boost);
-#endif /* CONFIG_DYNAMIC_STUNE_BOOST */
-
 	queue_delayed_work(b->wq, &b->input_unboost,
-		msecs_to_jiffies(input_boost_ms));
+		msecs_to_jiffies(CONFIG_INPUT_BOOST_DURATION_MS));
 }
 
 static void input_unboost_worker(struct work_struct *work)
@@ -218,12 +142,6 @@ static void input_unboost_worker(struct work_struct *work)
 		container_of(to_delayed_work(work), typeof(*b), input_unboost);
 
 	clear_boost_bit(b, INPUT_BOOST);
-
-#ifdef CONFIG_DYNAMIC_STUNE_BOOST
-	/* Reset dynamic stune boost value to the default value */
-	reset_stune_boost("top-app");
-#endif /* CONFIG_DYNAMIC_STUNE_BOOST */
-
 	update_online_cpu_policy();
 }
 
@@ -351,12 +269,7 @@ free_handle:
 
 static void cpu_input_boost_input_disconnect(struct input_handle *handle)
 {
-#ifdef CONFIG_DYNAMIC_STUNE_BOOST
-	/* Reset dynamic stune boost value to the default value */
-	reset_stune_boost("top-app");
-#endif
-  
-  input_close_device(handle);
+	input_close_device(handle);
 	input_unregister_handle(handle);
 	kfree(handle);
 }
@@ -415,7 +328,7 @@ static int __init cpu_input_boost_init(void)
 	INIT_DELAYED_WORK(&b->input_unboost, input_unboost_worker);
 	INIT_WORK(&b->max_boost, max_boost_worker);
 	INIT_DELAYED_WORK(&b->max_unboost, max_unboost_worker);
-	b->state = SCREEN_AWAKE;
+	atomic_set(&b->state, 0);
 
 	b->cpu_notif.notifier_call = cpu_notifier_cb;
 	ret = cpufreq_register_notifier(&b->cpu_notif, CPUFREQ_POLICY_NOTIFIER);
