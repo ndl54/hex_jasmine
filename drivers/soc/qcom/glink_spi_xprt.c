@@ -121,6 +121,8 @@ struct glink_cmpnt {
  * @tx_fifo_write_reg_addr:	Address of the TX FIFO Write Index Register.
  * @rx_fifo_read_reg_addr:	Address of the RX FIFO Read Index Register.
  * @rx_fifo_write_reg_addr:	Address of the RX FIFO Write Index Register.
+ * @tx_fifo_write:   Internal write index for TX FIFO.
+ * @rx_fifo_read:   Internal read index for RX FIFO.
  * @kwork:			Work to be executed when receiving data.
  * @kworker:			Handle to the entity processing @kwork.
  * @task:			Handle to the task context that runs @kworker.
@@ -158,6 +160,8 @@ struct edge_info {
 	unsigned int tx_fifo_write_reg_addr;
 	unsigned int rx_fifo_read_reg_addr;
 	unsigned int rx_fifo_write_reg_addr;
+  uint32_t tx_fifo_write;
+  uint32_t rx_fifo_read;
 
 	struct kthread_work kwork;
 	struct kthread_worker kworker;

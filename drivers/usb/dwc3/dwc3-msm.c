@@ -58,6 +58,7 @@
 
 /* time out to wait for USB cable status notification (in ms)*/
 #define SM_INIT_TIMEOUT 30000
+#define DWC3_WAKEUP_SRC_TIMEOUT 5000
 
 /* AHB2PHY register offsets */
 #define PERIPH_SS_AHB2PHY_TOP_CFG 0x10
@@ -216,6 +217,7 @@ struct dwc3_msm {
 	struct notifier_block	usbdev_nb;
 	bool			hc_died;
 	bool			xhci_ss_compliance_enable;
+  bool      no_wakeup_src_in_hostmode;
 
 	struct extcon_dev	*extcon_vbus;
 	struct extcon_dev	*extcon_id;
