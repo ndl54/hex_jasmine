@@ -366,21 +366,23 @@ static void nvt_esd_check_func(struct work_struct *work)
 static void nvt_ts_work_func(struct work_struct *work)
 {
 	uint8_t point_data[POINT_DATA_LEN + 1] = {0};
-	mutex_lock(&ts->lock);
-	int32_t ret = CTP_I2C_READ(ts->client, I2C_FW_Address, point_data, POINT_DATA_LEN + 1);
-	if (unlikely(ret < 0))
-		goto XFER_ERROR;
-	if (unlikely(nvt_fw_recovery(point_data))) {
-		nvt_esd_check_enable(true);
-		goto XFER_ERROR;
-	}
-	uint32_t position = 0;
+  int32_t ret;
+  uint32_t position = 0;
 	uint32_t input_x = 0;
 	uint32_t input_y = 0;
 	uint8_t input_id = 0;
 	uint8_t press_id[TOUCH_MAX_FINGER_NUM] = {0};
 	int32_t finger_cnt = 0;
 	size_t i;
+	
+  mutex_lock(&ts->lock);
+	ret = CTP_I2C_READ(ts->client, I2C_FW_Address, point_data, POINT_DATA_LEN + 1);
+	if (unlikely(ret < 0))
+		goto XFER_ERROR;
+	if (unlikely(nvt_fw_recovery(point_data))) {
+		nvt_esd_check_enable(true);
+		goto XFER_ERROR;
+	}
 
 	for (i = 0; i < ts->max_touch_num; i++) {
 		position = 1 + 6 * i;

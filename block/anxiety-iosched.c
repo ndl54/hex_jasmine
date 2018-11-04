@@ -81,13 +81,15 @@ static struct request *anxiety_latter_request(struct request_queue *q, struct re
 
 static int anxiety_init_queue(struct request_queue *q, struct elevator_type *elv)
 {	
-	struct elevator_queue *eq = elevator_alloc(q, elv);
-
+	struct elevator_queue *eq;
+  struct anxiety_data *data;
+  
+  eq = elevator_alloc(q, elv);
 	if (!eq)
 		return -ENOMEM;
 
 	/* allocate data */
-	struct anxiety_data *data = kmalloc_node(sizeof(*data), GFP_KERNEL, q->node);
+	data = kmalloc_node(sizeof(*data), GFP_KERNEL, q->node);
 	if (!data) {
 		kobject_put(&eq->kobj);
 		return -ENOMEM;

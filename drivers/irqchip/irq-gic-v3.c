@@ -426,14 +426,14 @@ static int gic_suspend(void)
 }
 
 static void gic_show_resume_irq(struct gic_chip_data *gic)
-{
+{	
+#ifdef CONFIG_QCOM_SHOW_RESUME_IRQ
 	unsigned int i;
 	u32 enabled;
 	u32 pending[32];
 	void __iomem *base = gic_data_dist_base(gic);
-
-#ifdef CONFIG_QCOM_SHOW_RESUME_IRQ
-	if (!msm_show_resume_irq_mask)
+  
+  if (!msm_show_resume_irq_mask)
 		return;
 
 	for (i = 0; i * 32 < gic->irq_nr; i++) {

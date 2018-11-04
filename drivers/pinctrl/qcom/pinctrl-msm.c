@@ -907,6 +907,7 @@ static int msm_pinctrl_suspend(void)
 
 static void msm_pinctrl_resume(void)
 {
+#ifdef CONFIG_QCOM_SHOW_RESUME_IRQ
 	int i, irq;
 	u32 val;
 	unsigned long flags;
@@ -914,9 +915,8 @@ static void msm_pinctrl_resume(void)
 	const struct msm_pingroup *g;
 	const char *name = "null";
 	struct msm_pinctrl *pctrl = msm_pinctrl_data;
-
-#ifdef CONFIG_QCOM_SHOW_RESUME_IRQ
-	if (!msm_show_resume_irq_mask)
+  
+  if (!msm_show_resume_irq_mask)
 		return;
 
 	spin_lock_irqsave(&pctrl->lock, flags);
