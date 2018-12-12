@@ -27,7 +27,7 @@
 #include <linux/string.h>
 #include <linux/module.h>
 
-int force_fast_charge = CONFIG_FORCE_FAST_CHARGE_ENABLE;
+int force_fast_charge = IS_ENABLED(CONFIG_FORCE_FAST_CHARGE_ENABLE);
 
 static int __init get_fastcharge_opt(char *ffc)
 {
