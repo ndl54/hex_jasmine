@@ -147,7 +147,7 @@ config DEFAULT_IOSCHED
 	string
 	default "deadline" if DEFAULT_DEADLINE
 	default "cfq" if DEFAULT_CFQ
-  default "bfq" if DEFAULT_BFQ
+	default "bfq" if DEFAULT_BFQ
 	default "anxiety" if DEFAULT_ANXIETY
 	default "noop" if DEFAULT_NOOP
 	default "maple" if DEFAULT_MAPLE
