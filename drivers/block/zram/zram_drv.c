@@ -1162,7 +1162,7 @@ compress_again:
 				__GFP_KSWAPD_RECLAIM |
 				__GFP_NOWARN |
 				__GFP_HIGHMEM |
-				__GFP_MOVABLE |
+				__GFP_MOVABLE,
 				&handle);
 	if (ret < 0) {
 		zcomp_stream_put(zram->comp);
