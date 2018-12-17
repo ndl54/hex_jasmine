@@ -1061,6 +1061,10 @@ out:
 }
 static int __init hwc_setup(char *s)
 {
+#ifdef CONFIG_QPNP_FG_GEN3_SPOOF_VARIANT
+	hwc_check_india = 1;
+	hwc_check_global = 0;
+#else
 	if (strcmp(s, "India") == 0)
 		hwc_check_india = 1;
 	else
@@ -1069,6 +1073,7 @@ static int __init hwc_setup(char *s)
 		hwc_check_global = 1;
 	else
 		hwc_check_global = 0;
+#endif
 	return 1;
 }
 
