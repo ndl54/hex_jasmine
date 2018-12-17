@@ -27,6 +27,14 @@ config QPNP_FG_GEN3
 	  the fuel gauge. The state of charge is reported through a BMS power
 	  supply property and also sends uevents when the capacity is updated.
 
+config QPNP_FG_GEN3_SPOOF_VARIANT
+	bool "Spoof hardware check to return Indian"
+	depends on QPNP_FG_GEN3
+	help
+	  Say Y here to spoof the device variant to always return as Indian.
+	  This can be used for a variety of reasons, but one specific purpose
+	  of this setting is to enable QC4.
+
 config SMB135X_CHARGER
 	tristate "SMB135X Battery Charger"
 	depends on I2C
